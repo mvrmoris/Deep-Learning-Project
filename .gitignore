@@ -1,0 +1,6 @@
+datasets/*
+!datasets/.gitkeep
+
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
