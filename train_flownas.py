@@ -241,8 +241,6 @@ def run_training(args):
             shuffle=True
         )
 
-    print("\n TRAINING FINISHED ")
-
     return history, model_VAE, flow
 
 def parse_args():
