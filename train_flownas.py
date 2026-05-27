@@ -5,12 +5,12 @@ import numpy as np
 import torch
 import pandas as pd
 from torch.utils.data import DataLoader, TensorDataset, random_split,Subset
-from model import VAE_dist, FlowNet
-from dataset_loader import NASDatasetFactory,load_nas201_api
+from latent_space.model import VAE_dist, FlowNet
+from latent_space.dataset_loader import NASDatasetFactory,load_nas201_api
 import os
 import tarfile
 from nats_bench import create
-from utils import (
+from latent_space.utils import (
     set_seed,
     pretrain_and_freeze_vae,
     generate_archs,
@@ -199,13 +199,7 @@ def run_training(args):
         history["min_acc"].append(min_acc)
         history["max_acc"].append(max_acc)
 
-        # --------------------------------------------------
-        # 5. Next population
-        # --------------------------------------------------
-        # --------------------------------------------------
-        # 5. Next population: SOLO architetture generate da z_new
-        # --------------------------------------------------
-
+        #next population
         df_next_population = pd.DataFrame({
             "arch": new_archs,
             "acc": new_accs
@@ -251,11 +245,6 @@ def run_training(args):
 
     return history, model_VAE, flow
 
-
-# ==================================================
-# 6. Entry point
-# ==================================================
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Training FlowNAS on NAS-Bench-201"
@@ -299,7 +288,7 @@ if __name__ == "__main__":
 
     args = parse_args()
 
-    print("\n========== CONFIG ==========")
+    print("\n CONFIG")
     for key, value in vars(args).items():
         print(f"{key}: {value}")
 
