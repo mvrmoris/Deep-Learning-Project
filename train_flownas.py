@@ -5,30 +5,29 @@ import numpy as np
 import torch
 import pandas as pd
 from torch.utils.data import DataLoader, TensorDataset, random_split,Subset
-from latent_space.model import VAE_dist, FlowNet, VAE_nas301,vae_accuracy_loss_nas301,vae_accuracy_loss
+from model import VAE_dist, FlowNet, VAE_nas301,vae_accuracy_loss_nas301,vae_accuracy_loss
 import os
 import tarfile
 from nats_bench import create
+import torch.nn.functional as F
 
-from latent_space.dataset_loader import (
+from dataset_loader import (
     NASDatasetFactory,
     load_nas201_api,
     arch_to_tensor,
     load_nas301_performance_model
 )
 
-from latent_space.utils import (
+from utils import (
+    build_accuracy_pairs,
     set_seed,
-    pretrain_and_freeze_vae,
     generate_archs,
-    train_one_epoch,
     decoded_x_to_nas201_arch,
     query_nas201_accuracy,
     query_nas301_accuracy,
     decode_population_nas301,
     build_next_population_nas301
 )
-
 
 def run_training(args):
 
@@ -81,7 +80,7 @@ def run_training(args):
 
         if args.benchmark_name.upper() == "NAS201":
 
-            dataset = NASDatasetFactory.create(
+            train_dataset,test_dataset,train_loader,test_loader = NASDatasetFactory.create(
                 benchmark_name="NAS201",
                 api=api,
                 dataset_name=args.dataset_name,
@@ -92,6 +91,8 @@ def run_training(args):
             )
 
             performance_model = None
+            train_size = len(train_dataset)
+            test_size = len(test_dataset)
 
         elif args.benchmark_name.upper() == "NAS301":
 
@@ -103,24 +104,23 @@ def run_training(args):
                 normalize_y=True,
                 seed=args.seed
             )
-
             api = None
+            train_size = int(0.8 * len(dataset))
+            test_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(args.seed)
+
+            train_dataset, test_dataset = random_split(
+                dataset,
+                [train_size, test_size],
+                generator=generator
+            )
 
         else:
             raise ValueError(f"Benchmark non supportato: {args.benchmark_name}")
 
         print("Numero architetture:", len(dataset))
 
-        train_size = int(0.8 * len(dataset))
-        test_size = len(dataset) - train_size
-
-        generator = torch.Generator().manual_seed(args.seed)
-
-        train_dataset, test_dataset = random_split(
-            dataset,
-            [train_size, test_size],
-            generator=generator
-        )
     else: 
         print("Dataset available")
         train_size = len(args.train_dataset)
@@ -195,18 +195,14 @@ def run_training(args):
             f"{outer_epoch + 1}/{args.outer_epochs} =========="
         )
         #1. training Flow
-        result = train_one_epoch(
-            flow=flow,
-            model_VAE=model_VAE,
-            train_loader=train_loader,
-            beta=args.beta,
-            lambda_acc=args.lambda_acc,
-            vae_epochs=args.vae_epochs,
-            flow_epochs=args.flow_epochs,
-            alpha=args.alpha,
-            DEVICE=DEVICE,
-            train_vae=False,
-        )
+        result =  train_one_epoch(
+                flow = flow,
+                model_VAE = model_VAE,
+                train_loader = train_loader,
+                flow_epochs=100,
+                alpha=0.5,
+                DEVICE=DEVICE
+            )
 
         if result is None:
             print("Training interrotto: nessuna coppia valida trovata.")
@@ -492,3 +488,239 @@ if __name__ == "__main__":
         print(f"{key}: {value}")
 
     history, model_VAE, flow = run_training(args)
+
+
+def train_one_epoch(
+    flow,
+    model_VAE,
+    train_loader,
+    flow_epochs=100,
+    alpha=0.5,
+    DEVICE="cpu"
+):
+    """
+    1. Extract embeddings of train_loader using model_VAE
+    2. Build improving accuracy pairs
+    3. Train the Flow
+    4. Generate new architectures using Flow
+    """
+
+    model_VAE = model_VAE.to(DEVICE)
+    flow = flow.to(DEVICE)
+
+    # 1. Embeddings extraction con VAE già allenato
+    model_VAE.eval()
+
+    z_all = []
+    y_all = []
+
+    with torch.no_grad():
+
+        for x, y in train_loader:
+            x = x.to(DEVICE).float()
+            y = y.float().view(-1)
+            mu, logvar = model_VAE.encode(x)
+
+            z_all.append(mu.cpu())
+            y_all.append(y.cpu())
+
+    z_all = torch.cat(z_all, dim=0)
+    y_all = torch.cat(y_all, dim=0)
+
+    print("z_all shape:", z_all.shape)
+    print("y_all shape:", y_all.shape)
+
+    # 2. Pair generation
+    pairs_x, pairs_target = build_accuracy_pairs(
+        X=z_all,
+        y=y_all,
+        K=50,
+        min_delta_acc=0.01,
+        seed=42
+    )
+
+    if len(pairs_x) == 0:
+        print("Nessuna coppia trovata: prova ad aumentare K o abbassare min_delta_acc.")
+        return None
+    print("pairs_x shape:", pairs_x.shape)
+    print("pairs_target shape:", pairs_target.shape)
+
+    pairs_dataset = TensorDataset(
+        pairs_x,
+        pairs_target
+    )
+    pairs_loader = DataLoader(
+        pairs_dataset,
+        batch_size=64,
+        shuffle=True
+    )
+
+    # 3. Training flow matching
+    flow_optimizer = torch.optim.Adam(
+        flow.parameters(),
+        lr=1e-3
+    )
+    flow.train()
+
+    for epoch in range(flow_epochs):
+        total_flow_loss = 0.0
+
+        for z_start, direction_target in pairs_loader:
+            z_start = z_start.to(DEVICE).float()
+            direction_target = direction_target.to(DEVICE).float()
+            pred_direction = flow(z_start)
+
+            loss = F.mse_loss(
+                pred_direction,
+                direction_target
+            )
+
+            flow_optimizer.zero_grad()
+            loss.backward()
+            flow_optimizer.step()
+            total_flow_loss += loss.item()
+
+    # 4. Generate new architectures from flow
+    flow.eval()
+
+    with torch.no_grad():
+
+        z_start = z_all.to(DEVICE).float()
+
+        direction = flow(z_start)
+
+        z_new = z_start + alpha * direction
+
+    print("z_new shape:", z_new.shape)
+
+    return z_new, z_all, y_all
+
+
+
+def pretrain_and_freeze_vae(
+    model_VAE,
+    pretrain_loader,
+    loss_fn,                     
+    beta=0.0,
+    lambda_acc=1.0,
+    vae_epochs=300,
+    DEVICE="cpu",
+    early_stop=True,
+    patience=20,
+    min_delta=1e-5,
+    loss_threshold=1e-4,
+    lr=1e-3,
+    **loss_kwargs                
+):
+    """
+    Pretrains a VAE and freezes it.
+
+     Input:
+    model_VAE : VAE model to pretrain.
+    pretrain_loader : `x` is the input and `y`
+        is the target accuracy.
+    loss_fn : callable Loss function used for VAE pretraining.
+    beta : Weight of the KL-divergence term.
+    lambda_acc : Weight of the accuracy-prediction loss.
+    vae_epochs : Maximum number of pretraining epochs.
+    DEVICE : Training device.
+    early_stop :  Whether to stop training early based on loss improvement.
+    patience : Number of epochs tolerated without improvement.
+    min_delta :Minimum loss improvement required to reset patience.
+    loss_threshold : Loss value below which training stops immediately.
+    lr : Adam optimizer learning rate.
+    **loss_kwargs
+        Additional arguments passed to `loss_fn`.
+
+     Output:
+    The pretrained and frozen VAE.
+    """
+
+    model_VAE = model_VAE.to(DEVICE)
+    optimizer = torch.optim.Adam(
+        model_VAE.parameters(),
+        lr=lr
+    )
+
+    best_loss = float("inf")
+    patience_counter = 0
+
+    for epoch in range(vae_epochs):
+
+        model_VAE.train()
+
+        total_loss = 0.0
+        total_recon = 0.0
+        total_kl = 0.0
+        total_acc_loss = 0.0
+
+        for x, y in pretrain_loader:
+
+            x = x.to(DEVICE).float()
+            y = y.to(DEVICE).float().view(-1)
+
+            recon_logits, recon_probs, mu, logvar, acc_pred = model_VAE(x)
+            loss, recon_loss, kl, acc_loss = loss_fn(
+                recon_logits=recon_logits,
+                recon_probs=recon_probs,
+                x=x,
+                mu=mu,
+                logvar=logvar,
+                acc_pred=acc_pred,
+                true_acc=y,
+                beta=beta,
+                lambda_acc=lambda_acc,
+                **loss_kwargs
+            )
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+            total_recon += recon_loss.item()
+            total_kl += kl.item()
+            total_acc_loss += acc_loss.item()
+
+        avg_loss = total_loss / len(pretrain_loader)
+        avg_recon = total_recon / len(pretrain_loader)
+        avg_kl = total_kl / len(pretrain_loader)
+        avg_acc_loss = total_acc_loss / len(pretrain_loader)
+
+        if epoch % 50 == 0:
+            print(
+                f"VAE pretrain epoch {epoch:03d} | "
+                f"loss={avg_loss:.6f} | "
+                f"recon={avg_recon:.6f} | "
+                f"kl={avg_kl:.6f} | "
+                f"acc_loss={avg_acc_loss:.6f}"
+            )
+
+        if early_stop:
+
+            if avg_loss < loss_threshold:
+                print(
+                    f"Early stopping: loss below threshold "
+                    f"at epoch {epoch}, loss={avg_loss:.6f}"
+                )
+                break
+            if avg_loss < best_loss - min_delta:
+                best_loss = avg_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
+            if patience_counter >= patience:
+                print(
+                    f"Early stopping: patience reached "
+                    f"at epoch {epoch}, best_loss={best_loss:.6f}"
+                )
+                break
+
+    model_VAE.eval()
+
+    for p in model_VAE.parameters():
+        p.requires_grad = False
+
+    print("VAE pretrained and frozen.")
+
+    return model_VAE
+    
