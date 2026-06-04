@@ -10,6 +10,10 @@ import os
 import tarfile
 from nats_bench import create
 import torch.nn.functional as F
+from ws_universale.supernet import Supernet
+from ws_universale.nb201 import nasbench201_strings_to_networkdags
+from utils import get_cifar10_loaders
+import torch.nn as nn
 
 from dataset_loader import (
     NASDatasetFactory,
@@ -37,6 +41,14 @@ def run_training(args):
     benchmark_name = args.benchmark_name.upper()
     api = None
     performance_model = None
+    weight_sharing = args.weight_sharing
+
+    if weight_sharing:
+        supernet = Supernet();
+        if args.dataset_name == "cifar10":
+            train_dataset_loader, val_dataset_loader = get_cifar10_loaders(batch_size=256)
+            
+            
 
     if benchmark_name == "NAS201":
 
@@ -73,8 +85,9 @@ def run_training(args):
         raise ValueError(f"Benchmark non supportato: {args.benchmark_name}")
 
     flow = FlowNet(dim=args.latent_dim).to(DEVICE)
+    
     #Dataset
-    if args.train_dataset is None:
+    if args.train_dataset is None :
 
         print("Dataset not available, importing...")
 
@@ -115,12 +128,13 @@ def run_training(args):
                 [train_size, test_size],
                 generator=generator
             )
+            print("Numero architetture:", len(dataset))  #spostato non so perchè stava sotto
+
 
         else:
             raise ValueError(f"Benchmark non supportato: {args.benchmark_name}")
 
-        print("Numero architetture:", len(dataset))
-
+        
     else: 
         print("Dataset available")
         train_size = len(args.train_dataset)
@@ -275,9 +289,7 @@ def run_training(args):
 
             #into NAS201 strings to query accuracy
             new_archs = []
-            new_accs = []
-            new_infos = []
-
+            
             for i in range(recon_probs_new.shape[0]):
 
                 x_decoded = recon_probs_new[i]           # [4, 4, 6]
@@ -288,23 +300,56 @@ def run_training(args):
                     x_decoded
                 )
 
-                acc, info = query_nas201_accuracy(
-                    api=api,
-                    arch_str=arch_str,
-                    dataset_name=args.dataset_name,
-                    hp=args.nas_hp,
-                    metric=args.nas_metric
-                )
-
-                if acc is None:
-                    continue
-                else: 
-                    acc = float(acc) / 100.0
-
                 new_archs.append(arch_str)
-                new_accs.append(acc)
-                new_infos.append(info)
 
+            new_accs = []
+            new_infos = []
+
+            if weight_sharing:
+                
+                print("evaluating nets\n")
+                # 1. Valutazione in blocco tramite Supernet
+                network_dags = nasbench201_strings_to_networkdags(new_archs)
+                
+                # La Supernet ritorna una lista in scala [0.0, 1.0]
+                raw_accs = supernet.eval_subnets(
+                    networks            = network_dags,
+                    train_loader        = train_dataset_loader,
+                    eval_loader         = val_dataset_loader,
+                    device              = DEVICE,
+                    bn_batches          = 20,
+                    epochs              = 20,
+                    calibrate= True,
+                    M                   = 4,
+                    criterion           = nn.CrossEntropyLoss(label_smoothing=0.1),
+                    use_label_smoothing = True,
+                    scheduler_factory   = lambda opt: torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=200, eta_min=1e-4),
+                    optimizer_factory   = lambda p: torch.optim.SGD(p, lr=0.025, momentum=0.9, weight_decay=3e-4, nesterov=True),
+                )
+                
+                # Assegna i risultati (nessuna divisione per 100 necessaria)
+                new_accs = [float(a) for a in raw_accs]
+                new_infos = [None] * len(new_archs)
+
+            else:
+
+                for arch_str in new_archs:
+                    acc, info = query_nas201_accuracy(
+                        api=api,
+                        arch_str=arch_str,
+                        dataset_name=args.dataset_name,
+                        hp=args.nas_hp,
+                        metric=args.nas_metric
+                    )
+
+                    if acc is not None:
+                        new_accs.append(float(acc) / 100.0) # L'API ritorna percentuali
+                        new_infos.append(info)
+                    else:
+                        # Se l'architettura non è valida/trovata
+                        new_accs.append(0.0)
+                        new_infos.append(None)  
+                
             if len(new_archs) == 0:
                 print("Nessuna architettura valida generata dal flow.")
                 break
@@ -345,6 +390,8 @@ def run_training(args):
 
             #initial population
             current_rows = []
+
+            print("line 393\n")
 
             for batch_x, batch_y in train_loader:
 
@@ -395,6 +442,7 @@ def run_training(args):
 
             X_next = []
             y_next = []
+            print("line 444\n")
 
             for _, row in df_next_population.iterrows():
 
@@ -475,6 +523,9 @@ def parse_args():
     parser.add_argument("--test_dataset", type=TensorDataset, default=None)
     parser.add_argument("--performance_model",default=None)
     parser.add_argument("--pos_weight_value", type=float, default=5.0)
+    parser.add_argument("--WS", type=str, default="False")
+
+
 
     args = parser.parse_args()
     return args

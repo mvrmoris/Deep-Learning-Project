@@ -15,6 +15,9 @@ import random
 #local
 from dataset_loader import tensor_to_genotype, genotype_to_tensor, cell_to_tensor, tensor_to_cell
 from model import vae_accuracy_loss,vae_accuracy_loss_nas301
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
 
 
 OPS = {
@@ -411,3 +414,26 @@ def decoded_x_to_nas201_arch(x_decoded):
     arch_str = "+".join(nodes)
 
     return arch_str
+
+def get_cifar10_loaders(batch_size=256, num_workers=2):
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    transform_val = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    train_dataset = torchvision.datasets.CIFAR10(
+        root='./data', train=True, download=True, transform=transform_train
+    )
+    val_dataset = torchvision.datasets.CIFAR10(
+        root='./data', train=False, download=True, transform=transform_val
+    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=num_workers, pin_memory=True)
+    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False,
+                              num_workers=num_workers, pin_memory=True)
+    return train_loader, val_loader
