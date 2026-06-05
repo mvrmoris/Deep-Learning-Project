@@ -1,4 +1,3 @@
-
 import argparse
 import random
 import numpy as np
@@ -24,7 +23,6 @@ from utils import (
     generate_archs,
     decoded_x_to_nas201_arch,
     query_nas201_accuracy,
-    query_nas301_accuracy,
     decode_population_nas301,
     build_next_population_nas301
 )
@@ -44,7 +42,7 @@ def run_training(args):
             api = args.api
         else:
             api = load_nas201_api()
-
+        set_seed(args.seed)
         model_VAE = VAE_dist(
             INPUT_DIM=96,
             LATENT_DIM=args.latent_dim,
@@ -60,7 +58,7 @@ def run_training(args):
         else:
             performance_model = load_nas301_performance_model()
             print(performance_model)
-
+        set_seed(args.seed)
         model_VAE = VAE_nas301(
             INPUT_DIM=504,
             LATENT_DIM=args.latent_dim,
@@ -72,6 +70,7 @@ def run_training(args):
     else:
         raise ValueError(f"Benchmark non supportato: {args.benchmark_name}")
 
+    set_seed(args.seed)
     flow = FlowNet(dim=args.latent_dim).to(DEVICE)
     #Dataset
     if args.train_dataset is None:
@@ -176,7 +175,8 @@ def run_training(args):
     #initial pool of architectures
     train_loader = generate_archs(
         dataset=train_dataset,
-        N=args.N
+        N=args.N,
+        seed = args.seed
     )
 
     history = {
@@ -201,7 +201,9 @@ def run_training(args):
                 train_loader = train_loader,
                 flow_epochs=100,
                 alpha=0.5,
-                DEVICE=DEVICE
+                DEVICE=DEVICE,
+                seed = args.seed,
+                min_delta = args.min_delta
             )
 
         if result is None:
@@ -475,6 +477,7 @@ def parse_args():
     parser.add_argument("--test_dataset", type=TensorDataset, default=None)
     parser.add_argument("--performance_model",default=None)
     parser.add_argument("--pos_weight_value", type=float, default=5.0)
+    parser.add_argument("--min_delta", type=float, default=0.01)
 
     args = parser.parse_args()
     return args
@@ -496,7 +499,9 @@ def train_one_epoch(
     train_loader,
     flow_epochs=100,
     alpha=0.5,
-    DEVICE="cpu"
+    DEVICE="cpu",
+    seed=42,
+    min_delta = 0.01
 ):
     """
     1. Extract embeddings of train_loader using model_VAE
@@ -535,8 +540,8 @@ def train_one_epoch(
         X=z_all,
         y=y_all,
         K=50,
-        min_delta_acc=0.01,
-        seed=42
+        min_delta_acc=mid_delta,
+        seed=seed
     )
 
     if len(pairs_x) == 0:
@@ -613,27 +618,7 @@ def pretrain_and_freeze_vae(
     **loss_kwargs                
 ):
     """
-    Pretrains a VAE and freezes it.
-
-     Input:
-    model_VAE : VAE model to pretrain.
-    pretrain_loader : `x` is the input and `y`
-        is the target accuracy.
-    loss_fn : callable Loss function used for VAE pretraining.
-    beta : Weight of the KL-divergence term.
-    lambda_acc : Weight of the accuracy-prediction loss.
-    vae_epochs : Maximum number of pretraining epochs.
-    DEVICE : Training device.
-    early_stop :  Whether to stop training early based on loss improvement.
-    patience : Number of epochs tolerated without improvement.
-    min_delta :Minimum loss improvement required to reset patience.
-    loss_threshold : Loss value below which training stops immediately.
-    lr : Adam optimizer learning rate.
-    **loss_kwargs
-        Additional arguments passed to `loss_fn`.
-
-     Output:
-    The pretrained and frozen VAE.
+    Pretrains a VAE and freezes it
     """
 
     model_VAE = model_VAE.to(DEVICE)

@@ -145,10 +145,10 @@ def build_accuracy_pairs(
 
     return pairs_x, pairs_target
 
-def generate_archs(dataset,N = 256):
+def generate_archs(dataset,N = 256,seed = 42):
     """Create initial dataset with N randomly generated architectures from dataset"""
   
-    generator = torch.Generator().manual_seed(42)
+    generator = torch.Generator().manual_seed(seed)
     random_indices = torch.randperm(len(dataset), generator=generator)[:N]
     initial_dataset = Subset(dataset, random_indices.tolist())
     
