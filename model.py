@@ -4,9 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 
 NUM_NODES = 4
-NUM_OPS = 6
+NUM_OPS = 5
 NUM_EDGES = NUM_NODES * NUM_NODES
-
 
 class VAE_nas301(nn.Module):
     def __init__(self, INPUT_DIM, LATENT_DIM, output_shape=(2, 7, 6, 6)):
@@ -17,14 +16,6 @@ class VAE_nas301(nn.Module):
         self.output_shape = output_shape
         self.output_dim = int(torch.prod(torch.tensor(output_shape)).item())
 
-        assert self.output_dim == INPUT_DIM, (
-            f"INPUT_DIM={INPUT_DIM} ma output_shape produce {self.output_dim}. "
-            f"Controlla output_shape."
-        )
-
-        # --------------------
-        # Encoder più profondo
-        # --------------------
         self.encoder = nn.Sequential(
             nn.Linear(INPUT_DIM, 512),
             nn.LayerNorm(512),
@@ -42,9 +33,6 @@ class VAE_nas301(nn.Module):
         self.mu = nn.Linear(128, LATENT_DIM)
         self.logvar = nn.Linear(128, LATENT_DIM)
 
-        # --------------------
-        # Decoder più profondo
-        # --------------------
         self.decoder = nn.Sequential(
             nn.Linear(LATENT_DIM, 128),
             nn.LayerNorm(128),
@@ -61,9 +49,6 @@ class VAE_nas301(nn.Module):
             nn.Linear(512, INPUT_DIM)
         )
 
-        # --------------------
-        # Accuracy predictor
-        # --------------------
         self.acc_predictor = nn.Sequential(
             nn.Linear(LATENT_DIM, 128),
             nn.ReLU(),
@@ -73,21 +58,14 @@ class VAE_nas301(nn.Module):
         )
 
     def encode(self, x):
-        """
-        x: [batch, 504]
-        """
         x = x.view(x.size(0), -1)
         h = self.encoder(x)
-
         mu = self.mu(h)
         logvar = self.logvar(h)
 
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
-        """
-        z = mu + eps * sigma
-        """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         z = mu + eps * std
@@ -95,12 +73,6 @@ class VAE_nas301(nn.Module):
         return z
 
     def decode(self, z):
-        """
-        Ritorna sia logits sia probabilità.
-
-        logits: [batch, 2, 7, 6, 6]
-        probs:  [batch, 2, 7, 6, 6]
-        """
         recon_logits = self.decoder(z)
         recon_logits = recon_logits.view(z.size(0), *self.output_shape)
 
@@ -112,10 +84,6 @@ class VAE_nas301(nn.Module):
         return self.acc_predictor(z).squeeze(-1)
 
     def forward(self, x):
-        """
-        Output compatibile con:
-        recon_logits, recon_probs, mu, logvar, pred_acc = model_VAE(x)
-        """
         x = x.view(x.size(0), -1)
 
         mu, logvar = self.encode(x)
@@ -140,25 +108,21 @@ def vae_accuracy_loss_nas301(
     pos_weight_value=5.0
 ):
     x = x.view(x.size(0), 2, 7, 6, 6)
-
     bce = F.binary_cross_entropy_with_logits(
         recon_logits,
         x,
         reduction="none"
     )
-
+    #weights on ones since the matrix is very sparse so the VAE could learn to reconstruct just the zeros
     weights = torch.ones_like(x)
     weights[x > 0.5] = pos_weight_value
-
     recon_loss = (bce * weights).mean()
 
     kl = -0.5 * torch.mean(
         1 + logvar - mu.pow(2) - logvar.exp()
     )
-
     true_acc = true_acc.view(-1).float()
     acc_pred = acc_pred.view(-1).float()
-
     acc_loss = F.mse_loss(
         acc_pred,
         true_acc
@@ -170,12 +134,11 @@ def vae_accuracy_loss_nas301(
 
 
 class VAE_dist(nn.Module):
-
     def __init__(
         self,
-        INPUT_DIM=96,
+        INPUT_DIM=80,
         LATENT_DIM=16,
-        output_shape=(4, 4, 6)
+        output_shape=(4, 4, 5)
     ):
         super().__init__()
 
@@ -183,15 +146,12 @@ class VAE_dist(nn.Module):
         self.LATENT_DIM = LATENT_DIM
         self.output_shape = output_shape
         self.output_dim = int(np.prod(output_shape))
-
-        # Encoder
         self.fc1 = nn.Linear(INPUT_DIM, 128)
         self.fc2 = nn.Linear(128, 64)
 
         self.mu = nn.Linear(64, LATENT_DIM)
         self.logvar = nn.Linear(64, LATENT_DIM)
 
-        # Decoder
         self.decoder = nn.Sequential(
             nn.Linear(LATENT_DIM, 128),
             nn.ReLU(),
@@ -201,7 +161,6 @@ class VAE_dist(nn.Module):
 
         self.edge_logits = nn.Linear(128, self.output_dim)
 
-        # Predictor accuracy
         self.acc_predictor = nn.Sequential(
             nn.Linear(LATENT_DIM, 64),
             nn.ReLU(),
@@ -211,7 +170,6 @@ class VAE_dist(nn.Module):
         )
 
     def encode(self, x):
-
         if x.dim() > 2:
             x = x.view(x.size(0), -1)
 
@@ -224,7 +182,6 @@ class VAE_dist(nn.Module):
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
-
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
 
@@ -233,15 +190,11 @@ class VAE_dist(nn.Module):
     def decode(self, z):
 
         h = self.decoder(z)
-
         logits = self.edge_logits(h)
-
         logits = logits.view(
             z.size(0),
             *self.output_shape
         )
-
-        # softmax sull'ultima dimensione
         probs = F.softmax(logits, dim=-1)
 
         return logits, probs
@@ -250,7 +203,6 @@ class VAE_dist(nn.Module):
         return self.acc_predictor(z)
 
     def forward(self, x):
-
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
 
@@ -262,7 +214,7 @@ class VAE_dist(nn.Module):
     
 def vae_accuracy_loss(
     recon_logits,
-    recon_probs,   # viene passato da pretrain_and_freeze_vae, anche se qui non lo usiamo
+    recon_probs,   
     x,
     mu,
     logvar,
@@ -270,22 +222,9 @@ def vae_accuracy_loss(
     true_acc,
     beta=1.0,
     lambda_acc=1.0,
-    **kwargs       # utile per ignorare eventuali argomenti extra
+    **kwargs   
 ):
-    """
-    Loss VAE per NAS201.
 
-    recon_logits: [batch, 4, 4, 6]
-    recon_probs:  [batch, 4, 4, 6], non usato qui
-    x:            [batch, 96]
-    mu:           [batch, latent_dim]
-    logvar:       [batch, latent_dim]
-    acc_pred:     [batch, 1]
-    true_acc:     [batch]
-    """
-
-    # x arriva appiattita: [batch, 96]
-    # la riportiamo alla codifica one-hot originale: [batch, 6, 4, 4]
     x = x.reshape(
         x.size(0),
         NUM_OPS,
@@ -293,24 +232,15 @@ def vae_accuracy_loss(
         NUM_NODES
     )
 
-    # spostiamo le operazioni in ultima posizione: [batch, 4, 4, 6]
     target_onehot = x.permute(0, 2, 3, 1)
-
-    # target discreto: [batch, 4, 4]
     target = target_onehot.argmax(dim=-1)
-
-    # reconstruction loss categoriale
     recon_loss = F.cross_entropy(
         recon_logits.reshape(-1, NUM_OPS),
         target.reshape(-1).long()
     )
-
-    # KL divergence
     kl = -0.5 * torch.mean(
         1 + logvar - mu.pow(2) - logvar.exp()
     )
-
-    # accuracy prediction loss
     if lambda_acc > 0:
         acc_loss = F.mse_loss(
             acc_pred.squeeze(-1),
@@ -341,39 +271,3 @@ def flow_loss(model, x, y):
     target = y - x
     pred = model(x)
     return ((pred - target) ** 2).mean()
-
-@torch.no_grad()
-def check_reconstruction(model, loader, device="cpu"):
-
-    model.eval()
-
-    correct = 0
-    total = 0
-
-    for x, y in loader:
-
-        x = x.to(device).float()
-
-        # x: [batch, 96] oppure [batch, 6, 4, 4]
-        if x.dim() == 2:
-            x_view = x.reshape(x.size(0), NUM_OPS, NUM_NODES, NUM_NODES)
-        else:
-            x_view = x
-
-        # target: [batch, 4, 4]
-        target_onehot = x_view.permute(0, 2, 3, 1)
-        target = target_onehot.argmax(dim=-1)
-
-        recon_logits, recon_probs, mu, logvar, acc_pred = model(x)
-
-        # predizione operazione per ogni arco
-        pred = recon_logits.argmax(dim=-1)
-
-        correct += (pred == target).sum().item()
-        total += target.numel()
-
-    recon_acc = correct / total
-
-    print(f"Reconstruction accuracy: {recon_acc * 100:.2f}%")
-
-    return recon_acc

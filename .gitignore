@@ -5,3 +5,7 @@ __pycache__/
 .ipynb_checkpoints/
 *.pycws_universale/data
 ws_universale/data/
+
+nb_models_1.0/
+latent_space/nb_models_1.0/
+**/nb_models_1.0/

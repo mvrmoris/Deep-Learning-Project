@@ -40,7 +40,6 @@ OPS = {
     "skip_connect": 2,
     "avg_pool_3x3": 3,
     "none": 4,
-    "zeroize": 5,
 }
 
 
