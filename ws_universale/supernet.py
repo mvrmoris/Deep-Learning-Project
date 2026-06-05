@@ -1,7 +1,7 @@
 # supernet.py
 import torch
 import torch.nn as nn
-from network_encoding import (
+from .network_encoding import (
     OpFactory, Node, Edge, DAG,
     CellSpec, CellNode, CellEdge, NetworkDAG,
 )
@@ -473,6 +473,7 @@ class Supernet(nn.Module):
         use_label_smoothing : bool  = False,
         scheduler_factory           = None,
         optimizer_factory           = None,
+        calibrate = False,
     ) -> list[float]:
 
         if not self._built:
@@ -497,8 +498,10 @@ class Supernet(nn.Module):
         for net in networks:
             path    = _extract_path(net)
             routing = self._known_paths[path]
-            self._calibrate_bn(routing, train_loader, device, bn_batches)
+            if calibrate:
+                self._calibrate_bn(routing, train_loader, device, bn_batches)
             acc = self._eval_one(routing, eval_loader, device)
+            print("evalutated")
             accuracies.append(acc)
 
         return accuracies

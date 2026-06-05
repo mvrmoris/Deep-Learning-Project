@@ -3,4 +3,5 @@ datasets/*
 
 __pycache__/
 .ipynb_checkpoints/
-*.pyc
+*.pycws_universale/data
+ws_universale/data/

@@ -472,6 +472,13 @@ class NAS201TorchDatasetBuilder:
             X_list.append(x)
             y_list.append(acc)
 
+            if hasattr(self.api, 'arch2infos_dict'):
+                self.api.arch2infos_dict.pop(idx, None)
+            if hasattr(self.api, 'arch2infos_full'):
+                self.api.arch2infos_full.pop(idx, None)
+            if hasattr(self.api, 'arch2infos_less'):
+                self.api.arch2infos_less.pop(idx, None)
+
         X = torch.tensor(np.stack(X_list), dtype=torch.float32)
         y = torch.tensor(y_list, dtype=torch.float32)
 

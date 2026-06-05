@@ -1,10 +1,11 @@
 import random
 import torch.nn as nn
 from typing import Callable
-from network_encoding import (
+from .network_encoding import (
     OpFactory, Node, Edge, DAG,
     CellSpec, CellNode, CellEdge, NetworkDAG,
 )
+import re
 
 # ... (le classi sopra) ...
 
@@ -19,7 +20,7 @@ def op_none() -> OpFactory:
 
 def op_skip() -> OpFactory:
     def factory(C_in, C_out): return nn.Identity()
-    factory.op_name = "skip"
+    factory.op_name = "skip_connect"
     return factory
 
 def op_conv1x1() -> OpFactory:
@@ -29,7 +30,7 @@ def op_conv1x1() -> OpFactory:
             nn.Conv2d(C_in, C_out, 1, bias=False),
             nn.BatchNorm2d(C_out),
         )
-    factory.op_name = "conv1x1"
+    factory.op_name = "nor_conv_1x1"
     return factory
 
 def op_conv3x3() -> OpFactory:
@@ -39,7 +40,7 @@ def op_conv3x3() -> OpFactory:
             nn.Conv2d(C_in, C_out, 3, padding=1, bias=False),
             nn.BatchNorm2d(C_out),
         )
-    factory.op_name = "conv3x3"
+    factory.op_name = "nor_conv_3x3"
     return factory
 
 def op_avg_pool3x3() -> OpFactory:
@@ -51,7 +52,7 @@ NB201_OPS: list[OpFactory] = [
     op_none(), op_skip(), op_conv1x1(), op_conv3x3(), op_avg_pool3x3()
 ]
 
-EDGE_ORDER = [("0","1"), ("0","2"), ("0","3"), ("1","2"), ("1","3"), ("2","3")]
+EDGE_ORDER = [("0","1"), ("0","2"), ("1","2"), ("0","3"), ("1","3"), ("2","3")]
 
 
 # ── unica funzione ─────────────────────────────────────────────────────────────
@@ -97,3 +98,44 @@ def sample_nb201_networks(
 
     return networks
 
+_NB201_STR_TO_FACTORY: dict[str, OpFactory] = {
+    "none"        : op_none(),
+    "skip_connect": op_skip(),
+    "nor_conv_1x1": op_conv1x1(),
+    "nor_conv_3x3": op_conv3x3(),
+    "avg_pool_3x3": op_avg_pool3x3(),
+}
+
+_NB201_EDGE_ORDER = [("0","1"), ("0","2"), ("1","2"), ("0","3"), ("1","3"), ("2","3")]
+
+_OP_RE = re.compile(r"([^|~]+)~\d+")
+
+def nasbench201_strings_to_networkdags(arch_strings: list[str]) -> list[NetworkDAG]:
+    networks = []
+    for arch_str in arch_strings:
+        ops = _OP_RE.findall(arch_str)
+        if len(ops) != 6:
+            raise ValueError(f"Attese 6 op, trovate {len(ops)}: {arch_str!r}")
+
+        dag = DAG(
+            nodes=[
+                Node("0"),
+                Node("1", aggregation="sum"),
+                Node("2", aggregation="sum"),
+                Node("3", aggregation="sum"),
+            ],
+            edges=[
+                Edge(s, d, _NB201_STR_TO_FACTORY[op])
+                for (s, d), op in zip(_NB201_EDGE_ORDER, ops)
+            ],
+            inputs=["0"],
+            outputs=["3"],
+        )
+        cell_spec = CellSpec(name=arch_str, dag=dag)
+        networks.append(NetworkDAG(
+            cell_nodes=[CellNode("cell", cell_spec, C_in=16, C_out=16)],
+            cell_edges=[],
+            inputs=["cell"],
+            outputs=["cell"],
+        ))
+    return networks
