@@ -389,28 +389,25 @@ def run_training(args):
             })
 
             #initial population
-            current_rows = []
-
-            print("line 393\n")
-
-            for batch_x, batch_y in train_loader:
-
-                for x_curr, y_curr in zip(batch_x, batch_y):
-
-                    x_curr = x_curr.float().view(-1)
-                    acc_curr = float(y_curr)
-
-                    arch_curr = decoded_x_to_nas201_arch(
-                        x_curr
-                    )
-
-                    current_rows.append({
-                        "arch": arch_curr,
-                        "acc": acc_curr,
-                        "source": "elite"
-                    })
-
-            df_current_population = pd.DataFrame(current_rows)
+            if weight_sharing:
+                # Le accuratezze fresche sono già tutte in generated_df
+                # non serve ri-estrarre dal train_loader (avrebbe y vecchie)
+                df_current_population = generated_df.copy()
+            else:
+                current_rows = []
+                print("line 393\n")
+                for batch_x, batch_y in train_loader:
+                    for x_curr, y_curr in zip(batch_x, batch_y):
+                        x_curr = x_curr.float().view(-1)
+                        acc_curr = float(y_curr)
+                        arch_curr = decoded_x_to_nas201_arch(x_curr)
+                        current_rows.append({
+                            "arch": arch_curr,
+                            "acc": acc_curr,
+                            "source": "elite"
+                        })
+                df_current_population = pd.DataFrame(current_rows)
+                
             df_current_population = (
                     df_current_population
                     .sort_values("acc", ascending=False)

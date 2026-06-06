@@ -30,7 +30,7 @@ class DAG:
         self.edges   = edges
         self.inputs  = inputs
         self.outputs = outputs
-        self._in_edges  = {n.id: [] for n in nodes}
+        self._in_edges  = {n.id: [] for n in nodes} 
         self._out_edges = {n.id: [] for n in nodes}
         for e in edges:
             self._in_edges[e.dst].append(e)
