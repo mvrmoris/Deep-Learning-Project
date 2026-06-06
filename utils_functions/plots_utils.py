@@ -5,7 +5,7 @@ import torch
 import matplotlib.pyplot as plt
 
 def compare_accuracy_distributions(y_all, new_accs, title="NAS201 Accuracy: Initial vs Generated",path = None):
-    
+
     if isinstance(y_all, torch.Tensor):
         y_init = y_all.detach().cpu().numpy().reshape(-1).astype(np.float32)
     else:
@@ -71,4 +71,92 @@ def compare_accuracy_distributions(y_all, new_accs, title="NAS201 Accuracy: Init
     if path is not None:
         plt.savefig(path, dpi=160, bbox_inches="tight",
                     facecolor=fig.get_facecolor())
+    plt.show()
+
+def plot_history_gaussians(
+    history,
+    title="NAS201 Accuracy distributions across outer epochs",
+    save_path=None,
+    max_gaussians=5
+):
+    epochs = np.array(history["epoch"])
+    means = np.array(history["mean_acc"], dtype=np.float32)
+    stds = np.array(history["std_acc"], dtype=np.float32)
+    selected_idx = np.arange(len(means))
+
+    epochs_plot = epochs[selected_idx]
+    means_plot = means[selected_idx]
+    stds_plot = stds[selected_idx]
+
+    means_plot = means_plot * 100.0
+    stds_plot = stds_plot * 100.0
+    stds_plot = np.maximum(stds_plot, 1e-6)
+
+    x_min = np.min(means_plot - 4 * stds_plot)
+    x_max = np.max(means_plot + 4 * stds_plot)
+    xs = np.linspace(x_min, x_max, 1000)
+
+    BG = "white"
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig.patch.set_facecolor(BG)
+    ax.set_facecolor(BG)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_edgecolor("#CCCCCC")
+    ax.spines["bottom"].set_edgecolor("#CCCCCC")
+
+    colors = plt.cm.viridis(np.linspace(0.08, 0.92, len(means_plot)))
+
+    max_pdf = 0.0
+
+    for epoch, mu, std, color in zip(epochs_plot, means_plot, stds_plot, colors):
+        pdf = norm.pdf(xs, mu, std)
+        max_pdf = max(max_pdf, pdf.max())
+        ax.fill_between(xs, pdf, alpha=0.10, color=color)
+        ax.plot(
+            xs,
+            pdf,
+            color=color,
+            linewidth=2.0,
+            label=f"Epoch {epoch + 1} (μ={mu:.2f}, σ={std:.2f})"
+        )
+        ax.axvline(
+            mu,
+            color=color,
+            linewidth=1.1,
+            linestyle="--",
+            alpha=0.75
+        )
+
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(6))
+    ax.grid(axis="y", color="#DDDDDD", linewidth=0.6, linestyle="-", zorder=0)
+    ax.set_axisbelow(True)
+
+    ax.set_xlabel("Accuracy (%)", fontsize=11, labelpad=8, color="#444444")
+    ax.set_ylabel("Density", fontsize=11, labelpad=8, color="#444444")
+    ax.tick_params(colors="#666666", labelsize=9.5)
+
+    ax.set_xlim(xs[0], xs[-1])
+    ax.set_ylim(bottom=0, top=max_pdf * 1.18)
+
+    fig.suptitle(
+        title,
+        fontsize=13,
+        fontweight="bold",
+        y=0.97,
+        color="#2C2C2A"
+    )
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+    if save_path is not None:
+        plt.savefig(
+            save_path,
+            dpi=160,
+            bbox_inches="tight",
+            facecolor=fig.get_facecolor()
+        )
+
     plt.show()

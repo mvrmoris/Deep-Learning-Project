@@ -58,7 +58,7 @@ def run_training(args):
             api = args.api
         else:
             api = load_nas201_api()
-
+        set_seed(args.seed)
         model_VAE = VAE_dist(
             INPUT_DIM=80,
             LATENT_DIM=args.latent_dim,
@@ -74,7 +74,7 @@ def run_training(args):
         else:
             performance_model = load_nas301_performance_model()
             print(performance_model)
-
+        set_seed(args.seed)
         model_VAE = VAE_nas301(
             INPUT_DIM=504,
             LATENT_DIM=args.latent_dim,
@@ -86,6 +86,7 @@ def run_training(args):
     else:
         raise ValueError(f"Benchmark non supportato: {args.benchmark_name}")
 
+    set_seed(args.seed)
     flow = FlowNet(dim=args.latent_dim).to(DEVICE)
     
     #Dataset
