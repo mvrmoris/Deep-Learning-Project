@@ -1,3 +1,4 @@
+
 import argparse
 import random
 import numpy as np
@@ -27,6 +28,7 @@ from utils import (
     generate_archs,
     decoded_x_to_nas201_arch,
     query_nas201_accuracy,
+    query_nas301_accuracy,
     decode_population_nas301,
     build_next_population_nas301
 )
@@ -54,11 +56,11 @@ def run_training(args):
             api = args.api
         else:
             api = load_nas201_api()
-        set_seed(args.seed)
+
         model_VAE = VAE_dist(
-            INPUT_DIM=80,
+            INPUT_DIM=96,
             LATENT_DIM=args.latent_dim,
-            output_shape=(4, 4, 5)
+            output_shape=(4, 4, 6)
         ).to(DEVICE)
 
         loss_fn = vae_accuracy_loss
@@ -70,7 +72,7 @@ def run_training(args):
         else:
             performance_model = load_nas301_performance_model()
             print(performance_model)
-        set_seed(args.seed)
+
         model_VAE = VAE_nas301(
             INPUT_DIM=504,
             LATENT_DIM=args.latent_dim,
@@ -82,7 +84,6 @@ def run_training(args):
     else:
         raise ValueError(f"Benchmark non supportato: {args.benchmark_name}")
 
-    set_seed(args.seed)
     flow = FlowNet(dim=args.latent_dim).to(DEVICE)
     
     #Dataset
@@ -175,7 +176,6 @@ def run_training(args):
             DEVICE=DEVICE,
             pos_weight_value=args.pos_weight_value
         )
-
     elif benchmark_name == "NAS201":
         pretrain_and_freeze_vae(
             model_VAE=model_VAE,
@@ -190,8 +190,7 @@ def run_training(args):
     #initial pool of architectures
     train_loader = generate_archs(
         dataset=train_dataset,
-        N=args.N,
-        seed = args.seed
+        N=args.N
     )
 
     history = {
@@ -203,9 +202,8 @@ def run_training(args):
         "population_size": []
     }
     #training loop
-    df_current_population = None
     for outer_epoch in range(args.outer_epochs):
-        
+
         print(
             f"\n OUTER EPOCH "
             f"{outer_epoch + 1}/{args.outer_epochs} =========="
@@ -217,9 +215,7 @@ def run_training(args):
                 train_loader = train_loader,
                 flow_epochs=100,
                 alpha=0.5,
-                DEVICE=DEVICE,
-                seed = args.seed,
-                min_delta = args.min_delta
+                DEVICE=DEVICE
             )
 
         if result is None:
@@ -270,17 +266,15 @@ def run_training(args):
                 new_genotypes=new_genotypes,
                 new_accs=new_accs,
                 train_loader=train_loader,
-                current_df=df_current_population,
                 elite_fraction=args.elite_fraction,
-                max_population_size=args.N,
+                max_population_size=args.N
             )
 
-            df_current_population = df_next_population.copy()
 
             train_loader = DataLoader(
                 TensorDataset(X_next, y_next),
                 batch_size=args.batch_size,
-                shuffle=True,
+                shuffle=True
             )
         else:
             #2. decoding new architectures
@@ -386,78 +380,87 @@ def run_training(args):
             history["min_acc"].append(min_acc)
             history["max_acc"].append(max_acc)
 
-            # flow-generated architectures
-            generated_df = (
-                pd.DataFrame({
-                    "arch": new_archs,
-                    "acc": map(float, new_accs),
-                    "source": "flow",
-                })
-                .sort_values("acc", ascending=False)
-                .drop_duplicates("arch")
-                .reset_index(drop=True)
-            )
+            #next population
+            # flow generated architecture: 
+            generated_df = pd.DataFrame({
+                "arch": new_archs,
+                "acc": new_accs,
+                "source": "flow"
+            })
 
-            # costruisci la popolazione corrente dal train_loader solo alla prima iterazione
-            if df_current_population is None:
-                current_rows = [
-                    {
-                        "arch": decoded_x_to_nas201_arch(x.float().flatten()),
-                        "acc": float(y),
-                        "source": "elite",
-                    }
-                    for batch_x, batch_y in train_loader
-                    for x, y in zip(batch_x, batch_y)
-                ]
-
-                df_current_population = (
-                    pd.DataFrame(current_rows)
+            #initial population
+            if weight_sharing:
+                # Le accuratezze fresche sono già tutte in generated_df
+                # non serve ri-estrarre dal train_loader (avrebbe y vecchie)
+                df_current_population = generated_df.copy()
+            else:
+                current_rows = []
+                print("line 393\n")
+                for batch_x, batch_y in train_loader:
+                    for x_curr, y_curr in zip(batch_x, batch_y):
+                        x_curr = x_curr.float().view(-1)
+                        acc_curr = float(y_curr)
+                        arch_curr = decoded_x_to_nas201_arch(x_curr)
+                        current_rows.append({
+                            "arch": arch_curr,
+                            "acc": acc_curr,
+                            "source": "elite"
+                        })
+                df_current_population = pd.DataFrame(current_rows)
+                
+            df_current_population = (
+                    df_current_population
                     .sort_values("acc", ascending=False)
-                    .drop_duplicates("arch")
                     .reset_index(drop=True)
                 )
-
-            # selezione elite e flow
-            n_elite = int(args.N * args.elite_fraction)
-            n_flow = args.N - n_elite
+            #taking a certain percentage of better performing architectures from previous round
+            n_elite = int(len(df_current_population) * args.elite_fraction)
+            n_elite = max(0, n_elite)
 
             elite_df = df_current_population.head(n_elite).copy()
-            elite_df["source"] = "elite"
 
-            flow_df = generated_df.head(n_flow).copy()
+            #concat of elite population + flow generated
+            df_next_population = pd.concat(
+                [generated_df, elite_df],
+                ignore_index=True
+            )
 
-            before_drop = len(flow_df) + len(elite_df)
+            before_drop = len(df_next_population)
 
-            # nuova popolazione
+            #dropping duplicated architectures
             df_next_population = (
-                pd.concat([flow_df, elite_df], ignore_index=True)
+                df_next_population
                 .sort_values("acc", ascending=False)
-                .drop_duplicates("arch")
+                .drop_duplicates(subset=["arch"], keep="first")
                 .reset_index(drop=True)
             )
 
-            # conversione in tensori
-            X_next = torch.stack([
-                torch.from_numpy(arch_to_tensor(arch)).float().flatten()
-                for arch in df_next_population["arch"]
-            ])
+            after_drop = len(df_next_population)
 
-            y_next = torch.tensor(
-                df_next_population["acc"].to_numpy(),
-                dtype=torch.float32,
-            )
+            X_next = []
+            y_next = []
+            print("line 444\n")
+
+            for _, row in df_next_population.iterrows():
+
+                arch_str = row["arch"]
+                acc = float(row["acc"])
+
+                x = arch_to_tensor(arch_str)
+                x = torch.from_numpy(x).float().view(-1)
+
+                X_next.append(x)
+                y_next.append(acc)
+
+            X_next = torch.stack(X_next)
+            y_next = torch.tensor(y_next).float().view(-1)
 
             pop_size = len(df_next_population)
             unique_archs = df_next_population["arch"].nunique()
+            duplicates = pop_size - unique_archs
 
-            # la nuova popolazione diventa quella corrente per l'iterazione successiva
-            df_current_population = df_next_population.copy()
+            history["population_size"].append(pop_size)
 
-            train_loader = DataLoader(
-                TensorDataset(X_next, y_next),
-                batch_size=args.batch_size,
-                shuffle=True,
-            )
             print("\nNext population:")
             print(f"use_top_mutations = {args.use_top_mutations}")
             print(f"population size   = {pop_size}")
@@ -465,6 +468,12 @@ def run_training(args):
             print(f"duplicates        = {pop_size - unique_archs}")
             print(f"mean acc          = {df_next_population['acc'].mean():.4f}")
             print(f"max acc           = {df_next_population['acc'].max():.4f}")
+
+            train_loader = DataLoader(
+                TensorDataset(X_next, y_next),
+                batch_size=args.batch_size,
+                shuffle=True
+            )
 
     if benchmark_name == "NAS301":
         return history, model_VAE, flow, test_dataset, performance_model
@@ -512,7 +521,8 @@ def parse_args():
     parser.add_argument("--performance_model",default=None)
     parser.add_argument("--pos_weight_value", type=float, default=5.0)
     parser.add_argument("--WS", type=str, default="False")
-    parser.add_argument("--min_delta", type=float, default=0.01)
+
+
 
     args = parser.parse_args()
     return args
@@ -534,9 +544,7 @@ def train_one_epoch(
     train_loader,
     flow_epochs=100,
     alpha=0.5,
-    DEVICE="cpu",
-    seed=42,
-    min_delta = 0.01
+    DEVICE="cpu"
 ):
     """
     1. Extract embeddings of train_loader using model_VAE
@@ -575,8 +583,8 @@ def train_one_epoch(
         X=z_all,
         y=y_all,
         K=50,
-        min_delta_acc=min_delta,
-        seed=seed
+        min_delta_acc=0.01,
+        seed=42
     )
 
     if len(pairs_x) == 0:
@@ -653,7 +661,27 @@ def pretrain_and_freeze_vae(
     **loss_kwargs                
 ):
     """
-    Pretrains a VAE and freezes it
+    Pretrains a VAE and freezes it.
+
+     Input:
+    model_VAE : VAE model to pretrain.
+    pretrain_loader : `x` is the input and `y`
+        is the target accuracy.
+    loss_fn : callable Loss function used for VAE pretraining.
+    beta : Weight of the KL-divergence term.
+    lambda_acc : Weight of the accuracy-prediction loss.
+    vae_epochs : Maximum number of pretraining epochs.
+    DEVICE : Training device.
+    early_stop :  Whether to stop training early based on loss improvement.
+    patience : Number of epochs tolerated without improvement.
+    min_delta :Minimum loss improvement required to reset patience.
+    loss_threshold : Loss value below which training stops immediately.
+    lr : Adam optimizer learning rate.
+    **loss_kwargs
+        Additional arguments passed to `loss_fn`.
+
+     Output:
+    The pretrained and frozen VAE.
     """
 
     model_VAE = model_VAE.to(DEVICE)
