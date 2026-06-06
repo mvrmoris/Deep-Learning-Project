@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data import Subset, DataLoader
 from torch.utils.data import DataLoader
+from torch.utils.data import TensorDataset, random_split
 import os
 import nasbench301 as nb
 import random
@@ -11,6 +12,8 @@ from dataset_loader import tensor_to_genotype, genotype_to_tensor
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
+import tempfile
+
 
 def set_seed(seed=42, deterministic=True):
     #support function to set the seed 
@@ -288,7 +291,10 @@ def decoded_x_to_nas201_arch(x_decoded):
 
     return "+".join(nodes)
 
+
 def get_cifar10_loaders(batch_size=256, num_workers=2):
+    # Usa la cartella temporanea del sistema operativo
+    tmp_dir = os.path.join(tempfile.gettempdir(), 'cifar10_data')
 
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
@@ -300,14 +306,44 @@ def get_cifar10_loaders(batch_size=256, num_workers=2):
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
+    
+    # I file verranno salvati in una cartella nascosta di sistema
     train_dataset = torchvision.datasets.CIFAR10(
-        root='./data', train=True, download=True, transform=transform_train
+        root=tmp_dir, train=True, download=True, transform=transform_train
     )
     val_dataset = torchvision.datasets.CIFAR10(
-        root='./data', train=False, download=True, transform=transform_val
+        root=tmp_dir, train=False, download=True, transform=transform_val
     )
+    
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=True)
     val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False,
                               num_workers=num_workers, pin_memory=True)
+    
     return train_loader, val_loader
+
+def load_csv_as_dataset(csv_path):
+    df = pd.read_csv(csv_path)
+    feature_cols = [col for col in df.columns if col.startswith("x_")]
+
+    feature_cols = sorted(
+        feature_cols,
+        key=lambda c: int(c.split("_")[1])
+    )
+
+    X = df[feature_cols].values
+    Y = df["accuracy"].values
+
+    X = torch.tensor(X, dtype=torch.float32)
+    Y = torch.tensor(Y, dtype=torch.float32)
+
+    dataset = TensorDataset(X, Y)
+
+    print("CSV caricato:", csv_path)
+    print("Numero esempi:", len(dataset))
+    print("X shape:", X.shape)
+    print("Y shape:", Y.shape)
+    print("Accuracy min:", Y.min().item())
+    print("Accuracy max:", Y.max().item())
+
+    return X, Y, dataset
