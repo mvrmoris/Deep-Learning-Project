@@ -160,3 +160,55 @@ def plot_history_gaussians(
         )
 
     plt.show()
+def plot_latent_comparison(z_2d_vae_acc, z_2d_vae, y_train):
+    fig, axes = plt.subplots(
+        1, 2,
+        figsize=(11, 4),
+        constrained_layout=True
+    )
+    if torch.is_tensor(z_2d_vae_acc):
+        z_2d_vae_acc = z_2d_vae_acc.detach().cpu().numpy()
+    if torch.is_tensor(z_2d_vae):
+        z_2d_vae = z_2d_vae.detach().cpu().numpy()
+    if torch.is_tensor(y_train):
+        y_train = y_train.detach().cpu().numpy()
+
+    sc0 = axes[0].scatter(
+        z_2d_vae_acc[:, 0],
+        z_2d_vae_acc[:, 1],
+        c=y_train,
+        cmap="viridis",
+        s=5,
+        vmin=0.65,
+        vmax=0.85
+    )
+
+    axes[0].set_title("VAE + Accuracy loss")
+    axes[0].set_xlabel("PC1")
+    axes[0].set_ylabel("PC2")
+
+    sc1 = axes[1].scatter(
+        z_2d_vae[:, 0],
+        z_2d_vae[:, 1],
+        c=y_train,
+        cmap="viridis",
+        s=5,
+        vmin=0.65,
+        vmax=0.85
+    )
+
+    axes[1].set_title("VAE base")
+    axes[1].set_xlabel("PC1")
+    axes[1].set_ylabel("PC2")
+
+    cbar = fig.colorbar(
+        sc1,
+        ax=axes.ravel().tolist(),
+        shrink=0.85,
+        pad=0.02
+    )
+    cbar.set_label("Accuracy (0.65–0.85)")
+
+    plt.show()
+
+    return fig, axes
