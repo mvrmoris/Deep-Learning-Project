@@ -40,7 +40,6 @@ OPS = {
     "skip_connect": 2,
     "avg_pool_3x3": 3,
     "none": 4,
-    "zeroize": 5,
 }
 
 
@@ -56,9 +55,7 @@ def load_nas301_performance_model(
     model_type="xgb_v1.0"
 ):
     """
-    Carica automaticamente il surrogate performance model di NAS-Bench-301.
-
-    Se i pesi non sono presenti localmente, li scarica.
+    loads nas301 performance model if it's not found locally
     """
 
     if model_dir is None:
@@ -81,8 +78,7 @@ def load_nas301_performance_model(
 
 def random_cell():
     """
-    Genera una cella DARTS casuale.
-    Ogni nodo intermedio riceve esattamente 2 archi.
+    Generate a casual DARTS cell
     """
     edges = []
 
@@ -724,8 +720,8 @@ class NASDatasetFactory:
                 normalize_y=normalize_y,
                 seed=seed,
             )
-            dataset = builder.build_dataset()
-            return dataset,performance_model
+            train_dataset,test_dataset,train_loader,test_loader= builder.build_loaders()
+            return train_dataset, test_dataset,train_loader, test_loader,performance_model
 
         else:
             raise ValueError(
