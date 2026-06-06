@@ -16,7 +16,6 @@ from nats_bench import create
 import torch.nn.functional as F
 from ws_universale.supernet import Supernet
 from ws_universale.nb201 import nasbench201_strings_to_networkdags
-from utils import get_cifar10_loaders
 import torch.nn as nn
 
 from dataset_loader import (
@@ -26,7 +25,7 @@ from dataset_loader import (
     load_nas301_performance_model
 )
 
-from utils import (
+from utils_functions.utils import (
     build_accuracy_pairs,
     set_seed,
     generate_archs,
@@ -34,7 +33,8 @@ from utils import (
     query_nas201_accuracy,
     query_nas301_accuracy,
     decode_population_nas301,
-    build_next_population_nas301
+    build_next_population_nas301,
+    get_cifar10_loaders
 )
 
 def run_training(args):
@@ -399,7 +399,7 @@ def run_training(args):
             )
 
             #initial population
-            if df_current_population == None: 
+            if df_current_population is None: 
                 if weight_sharing: 
                     #TO DO 
                     pass
