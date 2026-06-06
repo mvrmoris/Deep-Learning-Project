@@ -5,7 +5,11 @@ import numpy as np
 import torch
 import pandas as pd
 from torch.utils.data import DataLoader, TensorDataset, random_split,Subset
-from model import VAE_dist, FlowNet, VAE_nas301,vae_accuracy_loss_nas301,vae_accuracy_loss
+
+from models.flow import FlowNet
+from models.nas201_models import VAE_dist, vae_accuracy_loss
+from models.nas301_models import  VAE_nas301,vae_accuracy_loss_nas301
+
 import os
 import tarfile
 from nats_bench import create
@@ -48,8 +52,6 @@ def run_training(args):
         if args.dataset_name == "cifar10":
             train_dataset_loader, val_dataset_loader = get_cifar10_loaders(batch_size=256)
             
-            
-
     if benchmark_name == "NAS201":
 
         if hasattr(args, "api") and args.api is not None:
@@ -58,9 +60,9 @@ def run_training(args):
             api = load_nas201_api()
 
         model_VAE = VAE_dist(
-            INPUT_DIM=96,
+            INPUT_DIM=80,
             LATENT_DIM=args.latent_dim,
-            output_shape=(4, 4, 6)
+            output_shape=(4, 4, 5)
         ).to(DEVICE)
 
         loss_fn = vae_accuracy_loss
@@ -201,6 +203,7 @@ def run_training(args):
         "max_acc": [],
         "population_size": []
     }
+    df_current_population = None
     #training loop
     for outer_epoch in range(args.outer_epochs):
 
@@ -266,10 +269,12 @@ def run_training(args):
                 new_genotypes=new_genotypes,
                 new_accs=new_accs,
                 train_loader=train_loader,
+                current_df=df_current_population,
                 elite_fraction=args.elite_fraction,
-                max_population_size=args.N
+                max_population_size=args.N,
             )
 
+            df_current_population = df_next_population.copy()
 
             train_loader = DataLoader(
                 TensorDataset(X_next, y_next),
@@ -382,37 +387,44 @@ def run_training(args):
 
             #next population
             # flow generated architecture: 
-            generated_df = pd.DataFrame({
-                "arch": new_archs,
-                "acc": new_accs,
-                "source": "flow"
-            })
+            generated_df = (
+                pd.DataFrame({
+                    "arch": new_archs,
+                    "acc": map(float, new_accs),
+                    "source": "flow",
+                })
+                .sort_values("acc", ascending=False)
+                .drop_duplicates("arch")
+                .reset_index(drop=True)
+            )
 
             #initial population
-            if weight_sharing:
-                # Le accuratezze fresche sono già tutte in generated_df
-                # non serve ri-estrarre dal train_loader (avrebbe y vecchie)
-                df_current_population = generated_df.copy()
-            else:
-                current_rows = []
-                print("line 393\n")
-                for batch_x, batch_y in train_loader:
-                    for x_curr, y_curr in zip(batch_x, batch_y):
-                        x_curr = x_curr.float().view(-1)
-                        acc_curr = float(y_curr)
-                        arch_curr = decoded_x_to_nas201_arch(x_curr)
-                        current_rows.append({
-                            "arch": arch_curr,
-                            "acc": acc_curr,
-                            "source": "elite"
-                        })
-                df_current_population = pd.DataFrame(current_rows)
-                
-            df_current_population = (
-                    df_current_population
+            if df_current_population == None: 
+                if weight_sharing: 
+                    #TO DO 
+                    pass
+
+                else: 
+                    current_rows = []
+                    for batch_x, batch_y in train_loader:
+                        for x_curr, y_curr in zip(batch_x, batch_y):
+                            arch_curr = decoded_x_to_nas201_arch(
+                                x_curr.float().view(-1)
+                            )
+
+                            current_rows.append({
+                                "arch": arch_curr,
+                                "acc": float(y_curr),
+                                "source": "initial"
+                            })
+
+                df_current_population = (
+                    pd.DataFrame(current_rows)
                     .sort_values("acc", ascending=False)
+                    .drop_duplicates(subset=["arch"], keep="first")
                     .reset_index(drop=True)
                 )
+
             #taking a certain percentage of better performing architectures from previous round
             n_elite = int(len(df_current_population) * args.elite_fraction)
             n_elite = max(0, n_elite)
@@ -469,10 +481,12 @@ def run_training(args):
             print(f"mean acc          = {df_next_population['acc'].mean():.4f}")
             print(f"max acc           = {df_next_population['acc'].max():.4f}")
 
+            df_current_population = df_next_population.copy()
+
             train_loader = DataLoader(
                 TensorDataset(X_next, y_next),
                 batch_size=args.batch_size,
-                shuffle=True
+                shuffle=True,
             )
 
     if benchmark_name == "NAS301":
