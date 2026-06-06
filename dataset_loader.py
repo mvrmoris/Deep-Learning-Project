@@ -3,7 +3,6 @@ import tarfile
 import re
 import numpy as np
 import torch
-
 from nats_bench import create
 from torch.utils.data import TensorDataset, DataLoader, random_split
 from collections import namedtuple

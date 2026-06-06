@@ -1,44 +1,16 @@
-"""
-Confronto FlowNAS vs direzione casuale con la stessa norma su NAS-Bench-301.
-
-Uso atteso da notebook:
-
-    from nas301_flow_vs_random_20_runs import run_flow_vs_random_experiment
-
-    results_df, samples_df, summary_df = run_flow_vs_random_experiment(
-        base_args=args,
-        run_training_fn=run_training,
-        n_runs=20,
-        max_test_samples=None,
-        initial_seed=42,
-        output_dir="results_flow_vs_random"
-    )
-
-Il confronto e' paired:
-- stesso punto latente iniziale z;
-- stesso alpha;
-- ||d_random||_2 = ||d_flow||_2 per ogni campione;
-- stessa procedura di decode e stesso surrogate NAS301.
-"""
-
 from __future__ import annotations
-
 import copy
 import gc
 import os
 import random
 from dataclasses import dataclass
 from typing import Callable, Optional
-
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-
-# Funzioni gia' presenti nel progetto dell'utente.
 from dataset_loader import tensor_to_genotype
 from utils import query_nas301_accuracy
-
 
 @dataclass
 class RunMetrics:
@@ -58,9 +30,8 @@ class RunMetrics:
     mean_flow_direction_norm: float
     mean_random_direction_norm: float
 
-
 def set_all_seeds(seed: int, deterministic: bool = True) -> None:
-    """Imposta i seed Python, NumPy e PyTorch."""
+    """setting all seeds"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -80,8 +51,7 @@ def random_direction_same_norm(
     eps: float = 1e-12,
 ) -> torch.Tensor:
     """
-    Genera una direzione gaussiana isotropa e la riscala affinche',
-    per ogni elemento del batch, abbia la stessa norma L2 del Flow.
+    generate random direction with same norm as flow direction for fair comparison
     """
     if flow_direction.ndim != 2:
         raise ValueError(
@@ -89,7 +59,6 @@ def random_direction_same_norm(
             f"ricevuta {tuple(flow_direction.shape)}"
         )
 
-    # torch.randn_like non accetta generator in tutte le versioni PyTorch.
     random_direction = torch.randn(
         flow_direction.shape,
         dtype=flow_direction.dtype,
@@ -133,8 +102,6 @@ def _decode_latents_to_scores(
 
     with torch.no_grad():
         decoded = model_VAE.decode(z.to(device).float())
-
-        # Nel codice del progetto decode_population_nas301 usa decoded[-1].
         decoded_architectures = decoded[-1]
 
     decoded_architectures = decoded_architectures.detach().cpu()
@@ -148,7 +115,6 @@ def _decode_latents_to_scores(
             performance_model=performance_model,
             arch=genotype,
         )
-
         genotypes.append(genotype)
         scores.append(np.nan if accuracy is None else float(accuracy))
 
@@ -365,15 +331,8 @@ def run_flow_vs_random_experiment(
     output_dir: str = "results_flow_vs_random",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Ripete da zero training + confronto per n_runs seed diversi.
-
-    Restituisce:
-        results_df: una riga per training;
-        samples_df: una riga per architettura test e per training;
-        summary_df: statistiche aggregate sulle run.
+    train and comparison between different trainings
     """
-    if n_runs <= 0:
-        raise ValueError("n_runs deve essere positivo.")
 
     os.makedirs(output_dir, exist_ok=True)
 

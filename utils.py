@@ -289,7 +289,7 @@ def decoded_x_to_nas201_arch(x_decoded):
     return "+".join(nodes)
 
 def get_cifar10_loaders(batch_size=256, num_workers=2):
-    # Usa la cartella temporanea del sistema operativo
+    """load dataset to train models"""
     tmp_dir = os.path.join(tempfile.gettempdir(), 'cifar10_data')
 
     transform_train = transforms.Compose([
@@ -303,7 +303,6 @@ def get_cifar10_loaders(batch_size=256, num_workers=2):
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
     
-    # I file verranno salvati in una cartella nascosta di sistema
     train_dataset = torchvision.datasets.CIFAR10(
         root=tmp_dir, train=True, download=True, transform=transform_train
     )
