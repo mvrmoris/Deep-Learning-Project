@@ -169,7 +169,8 @@ def run_training(args):
         X_pretrain = torch.stack(X_pretrain)
 
         pretrain_dataset = TensorDataset(
-            X_pretrain
+            X_pretrain,
+            torch.rand(X_pretrain.size(0)),
         )
 
         pretrain_loader = DataLoader(
@@ -215,10 +216,22 @@ def run_training(args):
         )
 
     if benchmark_name == "NAS201":
+        if weight_sharing:
+            # Loss solo ricostruttiva: ignoriamo l'accuracy (lambda_acc=0)
             pretrain_and_freeze_vae(
                 model_VAE=model_VAE,
                 pretrain_loader=pretrain_loader,
-                loss_fn=loss_fn,
+                loss_fn=loss_fn,          # vae_accuracy_loss_ws
+                vae_epochs=args.pretrain_vae_epochs,
+                beta=args.beta,
+                lambda_acc=0.0,           # disabilita il termine accuracy
+                DEVICE=DEVICE
+            )
+        else:
+            pretrain_and_freeze_vae(
+                model_VAE=model_VAE,
+                pretrain_loader=pretrain_loader,
+                loss_fn=loss_fn,          # vae_accuracy_loss
                 vae_epochs=args.pretrain_vae_epochs,
                 beta=args.beta,
                 DEVICE=DEVICE
@@ -664,7 +677,7 @@ def pretrain_and_freeze_vae(
             y = y.to(DEVICE).float().view(-1)
 
             recon_logits, recon_probs, mu, logvar, acc_pred = model_VAE(x)
-            loss, recon_loss, kl, acc_loss = loss_fn(
+            result = loss_fn(
                 recon_logits=recon_logits,
                 recon_probs=recon_probs,
                 x=x,
@@ -676,6 +689,12 @@ def pretrain_and_freeze_vae(
                 lambda_acc=lambda_acc,
                 **loss_kwargs
             )
+
+            if len(result) == 4:
+                loss, recon_loss, kl, acc_loss = result
+            elif len(result) == 3:
+                loss, recon_loss, kl = result
+                acc_loss = torch.tensor(0.0)
 
             optimizer.zero_grad()
             loss.backward()

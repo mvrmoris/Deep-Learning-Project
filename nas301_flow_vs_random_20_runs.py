@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from dataset_loader import tensor_to_genotype
-from utils import query_nas301_accuracy
+from utils_functions.utils import query_nas301_accuracy
 
 @dataclass
 class RunMetrics:
