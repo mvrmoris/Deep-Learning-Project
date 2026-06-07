@@ -8,7 +8,6 @@ from torch.utils.data import TensorDataset, DataLoader, random_split
 from collections import namedtuple
 import random
 import nasbench301 as nb
-import pandas as pd
 
 #NAS301 structure utils: 
 PRIMITIVES = [
@@ -312,6 +311,7 @@ def arch_to_tensor(arch_str):
             A[OPS[op_name], src, dst] = 1.0
 
     return A
+
 def load_nas201_api(
     datasets_dir=None,
     tar_name="NATS-tss-v1_0-3ffb9-simple.tar",
@@ -728,37 +728,3 @@ class NASDatasetFactory:
                 f"Benchmark non supportato: {benchmark_name}. "
                 "Scegli tra NAS201 e NAS301."
             )
-        
-def fetch_gt_accuracies(
-    networks   : list,           # list[NetworkDAG]
-    accuracies : list[float],    # proxy accuracies dalla supernet
-    dataset    : str = 'cifar10-valid',
-    hp         : str = '200',
-) -> pd.DataFrame:
-    """
-    Per ogni NetworkDAG recupera la validation accuracy ground-truth
-    da NATS-Bench TSS e costruisce un DataFrame con proxy e GT.
-    """
-    api = load_nas201_api()
-
-    rows = []
-    for net, proxy_acc in zip(networks, accuracies):
-        arch_str = networkdag_to_nb201_str(net)
-        idx      = api.query_index_by_arch(arch_str)
-
-        if idx < 0:
-            gt_acc = None
-        else:
-            info   = api.get_more_info(idx, dataset, hp=hp, is_random=False)
-            gt_acc = info.get('valid-accuracy', None)
-
-        rows.append({
-            'arch_str'  : arch_str,
-            'Accuracy'  : proxy_acc * 100,   # supernet restituisce [0,1]
-            'GT_Accuracy': gt_acc,
-        })
-
-    df = pd.DataFrame(rows)
-    n_found = df['GT_Accuracy'].notna().sum()
-    print(f"Architetture trovate nel benchmark: {n_found}/{len(networks)}")
-    return df
