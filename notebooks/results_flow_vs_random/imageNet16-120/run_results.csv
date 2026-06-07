@@ -1,0 +1,2 @@
+run,seed,n_samples,mean_start_accuracy,mean_flow_accuracy,mean_random_accuracy,mean_flow_improvement,mean_random_improvement,mean_flow_advantage,flow_success_rate,random_success_rate,flow_better_rate,tie_rate,mean_flow_direction_norm,mean_random_direction_norm
+1,42,3125,0.3374995195594611,0.3451149862172391,0.33605918178372945,0.007615466657777914,-0.0014403377757317441,0.009055804433509658,0.41184,0.1712,0.44256,0.25568,12.222375107421875,12.222375109558106

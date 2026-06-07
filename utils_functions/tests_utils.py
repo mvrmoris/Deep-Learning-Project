@@ -12,11 +12,11 @@ import torch
 from torch.utils.data import DataLoader
 
 from utils_functions.utils import (
-    decode_population_nas301,
     decoded_x_to_nas201_arch,
     query_nas201_accuracy,
     set_seed,
 )
+from utils_functions.utilsnas301 import decode_population_nas301
 
 
 @dataclass

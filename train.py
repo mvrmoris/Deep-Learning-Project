@@ -96,6 +96,9 @@ def run_training(args):
 
     set_seed(args.seed)
     flow = FlowNet(dim=args.latent_dim).to(DEVICE)
+
+    train_dataset = None
+    test_dataset = None
     
     #Dataset mi serve solo nel caso in cui non ho weight sharing:
     if args.train_dataset is None and not weight_sharing:

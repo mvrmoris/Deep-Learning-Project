@@ -35,22 +35,21 @@ Genotype = namedtuple(
 
 #NAS301 dataset utils:
 def load_nas301_performance_model(
-    model_dir=None,
     version="1.0",
     model_type="xgb_v1.0"):
-    """Load surrogate NAS301 model"""
-    
-    if model_dir is None:
-        model_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),"..","nb_models_1.0",model_type))
+    """Load surrogate NAS301 model, scaricando nella cartella datasets/ se necessario."""
+
+    # Cartella datasets/ = stessa cartella di questo file
+    datasets_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dir = os.path.join(datasets_dir, f"nb_models_{version}", model_type)
 
     if not os.path.exists(model_dir):
-        print("Scaricamento dei pesi NAS-Bench-301...")
-        nb.download_models(version=version)
+        print("Pesi NAS-Bench-301 non trovati, scaricamento in corso...")
+        nb.download_models(version=version, download_dir=datasets_dir)
     else:
-        print("Pesi NAS-Bench-301 trovati localmente.")
+        print(f"Pesi NAS-Bench-301 trovati in {model_dir}")
 
     model = nb.load_ensemble(model_dir)
-
     print("Surrogate NAS-Bench-301 caricato.")
     return model
 
