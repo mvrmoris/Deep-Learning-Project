@@ -93,19 +93,52 @@ def build_accuracy_pairs(
     print("Number of pairs:", len(pairs_x))
     return pairs_x, pairs_target
 
-def generate_archs(dataset,N = 256,seed = 42):
-    """Create initial dataloader with N randomly generated architectures from dataset (for first iteration)"""
+def generate_archs(data, converter, N=256, seed=42):
+    """Seleziona N elementi casuali e li converte in architetture."""
     generator = torch.Generator().manual_seed(seed)
-    random_indices = torch.randperm(len(dataset), generator=generator)[:N]
-    initial_dataset = Subset(dataset, random_indices.tolist())
-    
-    initial_loader = DataLoader(
-        initial_dataset,
-        batch_size=64,
-        shuffle=True
-    )
 
-    return initial_loader
+    indices = torch.randperm(
+        len(data),
+        generator=generator
+    )[:min(N, len(data))].tolist()
+
+    architectures = []
+
+    for i in indices:
+        item = data[i]
+
+        # Gestisce Tensor, TensorDataset e dataset (x, y)
+        x = item[0] if isinstance(item, (tuple, list)) else item
+
+        architectures.append(
+            converter(x.float().flatten())
+        )
+
+    return architectures
+
+def random_nas201_arch():
+    operations = [
+        "nor_conv_3x3",
+        "nor_conv_1x1",
+        "skip_connect",
+        "avg_pool_3x3",
+        "none"
+    ]
+
+    nodes = []
+
+    for dst in range(1, 4):
+        edges = []
+
+        for src in range(dst):
+            op = random.choice(operations)
+            edges.append(f"{op}~{src}")
+
+        nodes.append(
+            "|" + "|".join(edges) + "|"
+        )
+
+    return "+".join(nodes)
 
 def load_nas301_performance_model():
     """Return the performance model of NAS301"""
@@ -142,74 +175,78 @@ def decode_population_nas301(model_VAE, z_new, performance_model, DEVICE):
 
     return genotypes, accs, infos
 
-def build_next_population_nas301(
-        new_genotypes,
-        new_accs,
-        train_loader=None,
-        current_df=None,
-        elite_fraction=0.1,
-        max_population_size=256,
-    ):
-    #dataframe with flow generated architectures 
+def build_next_population(
+    decoded_archs,
+    current_pop,
+    current_accs,
+    converter,
+    elite_fraction=0.1,
+    max_population_size=256,
+    key_fn=str,
+):
+    """
+    Costruisce la popolazione successiva unendo:
+    - architetture generate dal flow;
+    - migliori architetture della popolazione corrente.
+    """
+
+    # Conversione dei tensori decodificati in architetture
+    generated_archs = [
+        converter(x)
+        for x in decoded_archs
+    ]
+
+    generated_df = pd.DataFrame({
+        "arch": generated_archs,
+        "source": "flow",
+    })
+
+    generated_df["arch_key"] = generated_df["arch"].map(key_fn)
+
     generated_df = (
-        pd.DataFrame({
-            "arch": new_genotypes,
-            "arch_key": map(str, new_genotypes),
-            "acc": map(float, new_accs),
-            "source": "flow",
-        })
+        generated_df
+        .drop_duplicates("arch_key")
+        .reset_index(drop=True)
+    )
+
+    # Popolazione corrente, già valutata
+    current_df = pd.DataFrame({
+        "arch": current_pop,
+        "acc": list(map(float, current_accs)),
+        "source": "current",
+    })
+
+    current_df["arch_key"] = current_df["arch"].map(key_fn)
+
+    current_df = (
+        current_df
         .sort_values("acc", ascending=False)
         .drop_duplicates("arch_key")
         .reset_index(drop=True)
     )
-    #just once build the dataframe that contains the current population
-    if current_df is None:
-        rows = []
-
-        for batch_x, batch_y in train_loader:
-            for x, y in zip(batch_x, batch_y):
-                genotype = tensor_to_genotype(x.float().flatten())
-
-                rows.append({
-                    "arch": genotype,
-                    "arch_key": str(genotype),
-                    "acc": float(y),
-                    "source": "elite",
-                })
-
-        current_df = (
-            pd.DataFrame(rows)
-            .sort_values("acc", ascending=False)
-            .drop_duplicates("arch_key")
-            .reset_index(drop=True)
-        )
 
     n_elite = int(max_population_size * elite_fraction)
-    n_flow = max_population_size - n_elite
+    n_generated = max_population_size - n_elite
 
     elite_df = current_df.head(n_elite).copy()
     elite_df["source"] = "elite"
-    flow_df = generated_df.head(n_flow).copy()
 
-    #building dataframe of next population
+    generated_df = generated_df.head(n_generated)
+
+    # Le nuove architetture non hanno ancora accuracy
+    elite_df = elite_df.drop(columns="acc")
+
     next_df = (
-        pd.concat([flow_df, elite_df], ignore_index=True)
-        .sort_values("acc", ascending=False)
+        pd.concat(
+            [generated_df, elite_df],
+            ignore_index=True
+        )
         .drop_duplicates("arch_key")
+        .head(max_population_size)
         .reset_index(drop=True)
     )
 
-    X_next = torch.stack([
-        torch.from_numpy(genotype_to_tensor(genotype)).float().flatten()
-        for genotype in next_df["arch"]
-    ])
-
-    y_next = torch.tensor(
-        next_df["acc"].to_numpy(),
-        dtype=torch.float32,
-    )
-
-    return X_next, y_next, next_df
+    return next_df["arch"].tolist(), next_df
 
 def query_nas301_accuracy(
     performance_model,

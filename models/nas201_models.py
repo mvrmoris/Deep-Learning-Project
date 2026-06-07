@@ -121,3 +121,37 @@ def vae_accuracy_loss(
     loss = recon_loss + beta * kl + lambda_acc * acc_loss
 
     return loss, recon_loss, kl, acc_loss
+
+
+   
+def vae_accuracy_loss_ws(
+    recon_logits,
+    recon_probs,   
+    x,
+    mu,
+    logvar,
+    acc_pred,
+    true_acc,
+    beta=1.0,
+    **kwargs   
+):
+
+    x = x.reshape(
+        x.size(0),
+        NUM_OPS,
+        NUM_NODES,
+        NUM_NODES
+    )
+
+    target_onehot = x.permute(0, 2, 3, 1)
+    target = target_onehot.argmax(dim=-1)
+    recon_loss = F.cross_entropy(
+        recon_logits.reshape(-1, NUM_OPS),
+        target.reshape(-1).long()
+    )
+    kl = -0.5 * torch.mean(
+        1 + logvar - mu.pow(2) - logvar.exp()
+    )
+    loss = recon_loss + beta * kl 
+
+    return loss, recon_loss, kl
