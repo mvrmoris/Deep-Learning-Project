@@ -2,7 +2,10 @@ import matplotlib.ticker as ticker
 from scipy.stats import norm
 import numpy as np 
 import torch
+from scipy import stats
 import matplotlib.pyplot as plt
+import pandas as pd
+
 
 def compare_accuracy_distributions(y_all, new_accs, title="NAS201 Accuracy: Initial vs Generated",path = None):
 

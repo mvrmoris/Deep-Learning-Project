@@ -8,6 +8,8 @@ from torch.utils.data import TensorDataset, DataLoader, random_split
 from collections import namedtuple
 import random
 import nasbench301 as nb
+import pandas as pd
+from ws_universale.nb201 import networkdag_to_nb201_str
 
 #NAS301 structure utils: 
 PRIMITIVES = [
