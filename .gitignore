@@ -1,6 +1,8 @@
 datasets/*
 !datasets/nas301/
 !datasets/nas301/**
+!datasets/dataset_loader_nas201.py
+!datasets/dataset_loader_nas301.py
 
 __pycache__/
 .ipynb_checkpoints/

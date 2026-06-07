@@ -18,21 +18,17 @@ from ws_universale.nb201 import nasbench201_strings_to_networkdags
 import torch.nn as nn
 
 
-from dataset_loader import (
+from datasets.dataset_loader_nas201 import (
     NASDatasetFactory,
     load_nas201_api,
-    arch_to_tensor, tensor_to_genotype,
-    load_nas301_performance_model, genotype_to_tensor
+    arch_to_tensor
 )
-
 from utils_functions.utils import (
     build_accuracy_pairs,
     set_seed,
     generate_archs,
     decoded_x_to_nas201_arch,
     query_nas201_accuracy,
-    query_nas301_accuracy,
-    decode_population_nas301,
     build_next_population,
     get_cifar10_loaders,
     random_nas201_arch,
@@ -76,6 +72,9 @@ def run_training(args):
         ).to(DEVICE)
 
     elif benchmark_name == "NAS301":
+        from utils_functions.utilsnas301 import (decode_population_nas301, query_nas301_accuracy)
+        from datasets.dataset_loader_nas301 import (tensor_to_genotype,
+            load_nas301_performance_model, genotype_to_tensor)
 
         if getattr(args, "performance_model", None) is not None:
             performance_model = args.performance_model
