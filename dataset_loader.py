@@ -20,10 +20,10 @@ PRIMITIVES = [
     "dil_conv_5x5",
 ]
 
-N_OPS = len(PRIMITIVES)       # 7
-N_NODES = 4                   # intermediate nodes
-N_INPUTS = 2                  # input nodes
-TOTAL_NODES = N_INPUTS + N_NODES  # 6
+N_OPS = len(PRIMITIVES)       
+N_NODES = 4                   
+N_INPUTS = 2                 
+TOTAL_NODES = N_INPUTS + N_NODES  #
 
 OP_TO_IDX = {op: i for i, op in enumerate(PRIMITIVES)}
 
@@ -57,11 +57,7 @@ def load_nas301_performance_model(
     loads nas301 performance model if it's not found locally
     """
 
-    if model_dir is None:
-        model_dir = os.path.join(
-            "nb_models_1.0",
-            model_type
-        )
+    if model_dir is None: model_dir = os.path.join( "nb_models_1.0",model_type)
 
     if not os.path.exists(model_dir):
         print("Scaricamento dei pesi NAS-Bench-301 in corso...")
@@ -103,10 +99,7 @@ def random_genotype():
 
 def cell_to_tensor(cell_edges):
     """
-    Converte una cella DARTS in tensore one-hot.
-
-    Shape:
-        (N_OPS, TOTAL_NODES, TOTAL_NODES)
+    Convert DARTS cell into one-hot vector
     """
     A = np.zeros(
         (N_OPS, TOTAL_NODES, TOTAL_NODES),
@@ -129,13 +122,7 @@ def cell_to_tensor(cell_edges):
 
 def genotype_to_tensor(genotype):
     """
-    Genotype DARTS -> vettore flatten.
-
-    normal cell: (7, 6, 6)
-    reduce cell: (7, 6, 6)
-
-    output:
-        (2, 7, 6, 6) flatten = 504
+    frm genotype to tensor
     """
     normal_A = cell_to_tensor(genotype.normal)
     reduce_A = cell_to_tensor(genotype.reduce)
@@ -144,52 +131,7 @@ def genotype_to_tensor(genotype):
 
     return both.flatten()
 
-def tensor_to_cell(x_cell):
-    """
-    Converte una cella tensoriale NAS301 in lista DARTS:
-        [(op_name, src), ...]
 
-    Input:
-        x_cell shape: (N_OPS, TOTAL_NODES, TOTAL_NODES)
-        cioè (7, 6, 6)
-
-    Per ogni nodo intermedio prende i 2 archi entranti con score più alto.
-    """
-
-    if isinstance(x_cell, torch.Tensor):
-        x_cell = x_cell.detach().cpu().numpy()
-
-    edges = []
-
-    for dst_offset in range(N_NODES):
-
-        dst = N_INPUTS + dst_offset
-
-        candidates = []
-
-        for src in range(dst):
-            for op_idx, op_name in enumerate(PRIMITIVES):
-                score = x_cell[op_idx, src, dst]
-                candidates.append((score, op_name, src))
-
-        candidates = sorted(
-            candidates,
-            key=lambda t: t[0],
-            reverse=True
-        )
-
-        selected = candidates[:2]
-
-        # ordine stabile per sorgente
-        selected = sorted(
-            selected,
-            key=lambda t: t[2]
-        )
-
-        for _, op_name, src in selected:
-            edges.append((op_name, src))
-
-    return edges
 
 def tensor_to_cell(x_cell):
     """
