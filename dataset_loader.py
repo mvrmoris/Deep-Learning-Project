@@ -54,10 +54,21 @@ def load_nas301_performance_model(
     model_type="xgb_v1.0"
 ):
     """
-    loads nas301 performance model if it's not found locally
+    Carica il performance model NAS301 dalla cartella padre.
+    Se non è presente, scarica i pesi.
     """
 
-    if model_dir is None: model_dir = os.path.join( "nb_models_1.0",model_type)
+    if model_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        model_dir = os.path.abspath(
+            os.path.join(
+                base_dir,
+                "..",
+                "nb_models_1.0",
+                model_type
+            )
+        )
 
     if not os.path.exists(model_dir):
         print("Scaricamento dei pesi NAS-Bench-301 in corso...")
