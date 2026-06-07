@@ -33,7 +33,7 @@ def compare_accuracy_distributions(y_all, new_accs, title="NAS201 Accuracy: Init
     pdf_i  = norm.pdf(xs, mu_i, std_i)
     pdf_g  = norm.pdf(xs, mu_g, std_g)
 
-    C_INIT, C_GEN, BG = "#4A90D9", "#C0503A", "#F7F7F5"
+    C_INIT, C_GEN, BG = "#4A90D9", "#C0503A", "white"
 
     fig, ax = plt.subplots(figsize=(10, 5.5))
     fig.patch.set_facecolor(BG)
