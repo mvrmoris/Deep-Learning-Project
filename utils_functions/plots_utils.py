@@ -212,3 +212,63 @@ def plot_latent_comparison(z_2d_vae_acc, z_2d_vae, y_train):
     plt.show()
 
     return fig, axes
+
+def compute_and_plot_correlation(df: pd.DataFrame) -> dict | None:
+    """
+    Calcola Spearman / Kendall / Pearson tra proxy e GT
+    e genera scatter + rank-scatter.
+    """
+    df_clean = df.dropna(subset=['Accuracy', 'GT_Accuracy']).copy()
+    n = len(df_clean)
+    if n < 5:
+        print("⚠ Troppi pochi dati validi per una stima affidabile.")
+        return None
+
+    sp_r, sp_p = stats.spearmanr(df_clean['Accuracy'],  df_clean['GT_Accuracy'])
+    kt_r, kt_p = stats.kendalltau(df_clean['Accuracy'], df_clean['GT_Accuracy'])
+    pe_r, pe_p = stats.pearsonr(df_clean['Accuracy'],   df_clean['GT_Accuracy'])
+
+    print("\n" + "="*60)
+    print("  CORRELAZIONE SUPERNET PROXY vs NB201 GROUND TRUTH")
+    print("="*60)
+    print(f"  Spearman ρ : {sp_r:+.4f}  (p = {sp_p:.4f})")
+    print(f"  Kendall  τ : {kt_r:+.4f}  (p = {kt_p:.4f})")
+    print(f"  Pearson  r : {pe_r:+.4f}  (p = {pe_p:.4f})")
+    print(f"  Campioni   : {n} architetture")
+    print("="*60)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    # ── scatter accuracy assolute ──────────────────────────────────────────────
+    axes[0].scatter(df_clean['GT_Accuracy'], df_clean['Accuracy'],
+                    alpha=0.75, color='steelblue', edgecolors='white', s=60)
+    m, b = np.polyfit(df_clean['GT_Accuracy'], df_clean['Accuracy'], 1)
+    xfit = np.linspace(df_clean['GT_Accuracy'].min(), df_clean['GT_Accuracy'].max(), 100)
+    axes[0].plot(xfit, m*xfit + b, '--', color='tomato', linewidth=1.5)
+    axes[0].set_xlabel('Ground Truth Accuracy – NB201 (%)', fontsize=11)
+    axes[0].set_ylabel('Proxy Accuracy – Supernet (%)',     fontsize=11)
+    axes[0].set_title(f'Accuracy Assolute\nPearson r = {pe_r:.3f}',
+                      fontsize=12, fontweight='bold')
+    axes[0].grid(True, linestyle='--', alpha=0.4)
+
+    # ── scatter rank ───────────────────────────────────────────────────────────
+    df_clean['rank_supernet'] = df_clean['Accuracy'].rank(ascending=False)
+    df_clean['rank_gt']       = df_clean['GT_Accuracy'].rank(ascending=False)
+
+    axes[1].scatter(df_clean['rank_gt'], df_clean['rank_supernet'],
+                    alpha=0.75, color='darkorange', edgecolors='white', s=60)
+    lim = max(df_clean['rank_gt'].max(), df_clean['rank_supernet'].max())
+    axes[1].plot([1, lim], [1, lim], '--', color='gray',
+                 linewidth=1.2, label='rank perfetto')
+    axes[1].set_xlabel('Rank reale (NB201)',    fontsize=11)
+    axes[1].set_ylabel('Rank proxy (Supernet)', fontsize=11)
+    axes[1].set_title(
+        f'Rank Correlation\nSpearman ρ = {sp_r:.3f},  Kendall τ = {kt_r:.3f}',
+        fontsize=12, fontweight='bold')
+    axes[1].grid(True, linestyle='--', alpha=0.4)
+    axes[1].legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    return {'spearman': sp_r, 'kendall': kt_r, 'pearson': pe_r}

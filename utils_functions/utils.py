@@ -356,6 +356,35 @@ def get_cifar10_loaders(batch_size=256, num_workers=2):
     
     return train_loader, val_loader
 
+def get_cifar100_loaders(batch_size=256, num_workers=2):
+    """Load CIFAR-100 dataset to train models."""
+    tmp_dir = os.path.join(tempfile.gettempdir(), 'cifar100_data')
+
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+    ])
+    transform_val = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+    ])
+
+    train_dataset = torchvision.datasets.CIFAR100(
+        root=tmp_dir, train=True, download=True, transform=transform_train
+    )
+    val_dataset = torchvision.datasets.CIFAR100(
+        root=tmp_dir, train=False, download=True, transform=transform_val
+    )
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=num_workers, pin_memory=True)
+    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                              num_workers=num_workers, pin_memory=True)
+
+    return train_loader, val_loader
+
 def load_csv_as_dataset(csv_path):
     df = pd.read_csv(csv_path)
     feature_cols = [col for col in df.columns if col.startswith("x_")]

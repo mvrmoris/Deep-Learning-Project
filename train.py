@@ -35,7 +35,8 @@ from utils_functions.utils import (
     decode_population_nas301,
     build_next_population,
     get_cifar10_loaders,
-    random_nas201_arch
+    random_nas201_arch,
+    get_cifar100_loaders
 )
 
 def run_training(args):
@@ -54,6 +55,8 @@ def run_training(args):
             supernet = Supernet();
             if args.dataset_name == "cifar10":
                 train_dataset_loader, val_dataset_loader = get_cifar10_loaders(batch_size=256)
+            elif args.dataset_name == "cifar100":
+                train_dataset_loader, val_dataset_loader = get_cifar100_loaders(batch_size=256)
 
             loss_fn = vae_accuracy_loss_ws
         else: 
