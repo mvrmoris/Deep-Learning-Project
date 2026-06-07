@@ -12,6 +12,8 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
+
+
 def set_seed(seed=42, deterministic=True):
     #support function to set the seed 
     random.seed(seed)
