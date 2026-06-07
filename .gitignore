@@ -1,5 +1,6 @@
 datasets/*
-!datasets/.gitkeep
+!datasets/nas301/
+!datasets/nas301/**
 
 __pycache__/
 .ipynb_checkpoints/

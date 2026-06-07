@@ -122,8 +122,6 @@ def vae_accuracy_loss(
 
     return loss, recon_loss, kl, acc_loss
 
-
-   
 def vae_accuracy_loss_ws(
     recon_logits,
     recon_probs,   
