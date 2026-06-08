@@ -302,8 +302,8 @@ def run_training(args):
                     train_loader=train_dataset_loader,
                     eval_loader=val_dataset_loader,
                     device=DEVICE,
-                    bn_batches=20,
-                    epochs=20,
+                    bn_batches=5,
+                    epochs=120,
                     calibrate=True,
                     M=4,
                     criterion=nn.CrossEntropyLoss(
