@@ -73,3 +73,34 @@ We recommend starting with the two notebooks:
 
 # NAS-Bench-301 Setup
 
+````markdown
+### NAS-Bench-301 setup
+
+NAS-Bench-301 uses a pretrained surrogate model to estimate the
+CIFAR-10 performance of architectures in the DARTS search space.
+
+1. Install the NAS-Bench-301 package:
+
+   ```bash
+   pip install git+https://github.com/automl/nasbench301.git
+````
+
+2. Download the pretrained performance surrogate model:
+
+   ```python
+   import nasbench301 as nb
+
+   nb.download_models(
+       version="1.0",
+       download_dir="datasets"
+   )
+   ```
+
+3. The expected model directory is:
+
+   ```text
+   datasets/
+   └── nb_models_1.0/
+       └── xgb_v1.0/
+   ```
+
