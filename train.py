@@ -58,6 +58,8 @@ def run_training(args):
         else: 
             loss_fn = vae_accuracy_loss
 
+        n_classes = {"cifar10": 10, "cifar100": 100, "imagenet": 1000}.get(args.dataset_name, 10)
+
         #else:
         if hasattr(args, "api") and args.api is not None:
             api = args.api
@@ -263,7 +265,8 @@ def run_training(args):
         "std_acc": [],
         "min_acc": [],
         "max_acc": [],
-        "population_size": []
+        "population_size": [],
+        "population": []       
     }
     df_current_population = None
 
@@ -301,11 +304,12 @@ def run_training(args):
                     networks=network_dags,
                     train_loader=train_dataset_loader,
                     eval_loader=val_dataset_loader,
+                    n_classes=n_classes,
                     device=DEVICE,
-                    bn_batches=5,
-                    epochs=120,
+                    bn_batches=20,
+                    epochs=150,
                     calibrate=True,
-                    M=4,
+                    M=1,
                     criterion=nn.CrossEntropyLoss(
                         label_smoothing=0.1
                     ),
@@ -378,6 +382,7 @@ def run_training(args):
         history["min_acc"].append(min_acc)
         history["max_acc"].append(max_acc)
         history["population_size"].append(len(evaluated_archs))
+        history["population"].append(list(current_pop))
 
         converter = (
             genotype_to_tensor
