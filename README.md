@@ -12,8 +12,7 @@ To make the repository easier to navigate and the experiments easier to reproduc
 
 
 # NAS-Bench-201 Setup
-
-To run the code, install the required dependencies with:
+After cloning the repository and creating a virtual environment, install the required dependencies with:
 
 ```bash
 pip install -r requirements.txt
