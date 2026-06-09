@@ -65,7 +65,7 @@ The `notebooks/` directory contains the analyses and experiments developed throu
 
 * `notebooks/training.ipynb` provides a step-by-step implementation of the FlowNAS training procedure.
 * `notebooks/latent_space.ipynb` contains visualizations of the learned latent space and Flow directions.
-* `notebooks/experiments.ipynb` contains the code used to run the main experiments and evaluations.
+* `notebooks/experiments.ipynb`  ad `notebooks/experiments.ipynb` contains the code used to run the main experiments and evaluations.
 
 ## `datasets/`
 
