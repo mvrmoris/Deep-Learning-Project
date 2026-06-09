@@ -41,6 +41,13 @@ def arch_to_tensor(arch_str):
             A[OPS[op_name], src, dst] = 1.0
 
     return A
+import os
+import tarfile
+import shutil
+import gdown
+
+from nats_bench import create
+
 
 def load_nas201_api(
     datasets_dir=None,
@@ -49,22 +56,47 @@ def load_nas201_api(
     fast_mode=True,
     verbose=False,
 ):
-    """Load the NAS-Bench-201 API."""
+    """Download, extract and load the NAS-Bench-201 API."""
+
     datasets_dir = datasets_dir or os.path.dirname(
         os.path.abspath(__file__)
     )
+    os.makedirs(datasets_dir, exist_ok=True)
 
     tar_path = os.path.join(datasets_dir, tar_name)
     dataset_path = os.path.join(datasets_dir, extracted_name)
 
+    # Official NATS-Bench Google Drive file ID
+    file_id = "17_saCsj_krKjlCBLOJEpNtzPXArMCqxU"
+
     if not os.path.exists(dataset_path):
+
         if not os.path.isfile(tar_path):
-            raise FileNotFoundError(
-                f"Archivio NAS201 non trovato: {tar_path}"
+            print("NAS-Bench-201 dataset not found. Downloading...")
+
+            gdown.download(
+                id=file_id,
+                output=tar_path,
+                quiet=False,
             )
 
-        with tarfile.open(tar_path, "r") as tar:
+            if not os.path.isfile(tar_path):
+                raise RuntimeError(
+                    "NAS-Bench-201 download failed."
+                )
+
+        print("Extracting NAS-Bench-201 dataset...")
+
+        with tarfile.open(tar_path, "r:*") as tar:
             tar.extractall(datasets_dir)
+
+        if not os.path.exists(dataset_path):
+            raise RuntimeError(
+                f"Extraction completed, but the expected directory "
+                f"was not found: {dataset_path}"
+            )
+
+        print(f"Dataset available at: {dataset_path}")
 
     return create(
         dataset_path,
