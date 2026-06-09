@@ -100,5 +100,4 @@ The `ws_universale/` directory contains the weight-sharing implementation used t
 The main directory contains the scripts and configuration files used to train and evaluate FlowNAS.
 
 * `train.py` contains the main training pipeline, including VAE pretraining, Flow training, architecture generation, and population updates.
-* `requirements_201.txt` lists the dependencies required to run the NAS-Bench-201 experiments.
-* `requirements.txt` lists the dependencies required to run the complete project, including NAS-Bench-301 support.
+* `requirements.txt` lists the dependencies required to run the NAS-Bench-201 experiments.
